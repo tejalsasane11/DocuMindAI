@@ -69,6 +69,15 @@ def extract_invoice_number(text: str) -> str:
     return clean_value(match.group(1)) if match else NOT_FOUND
 
 
+def normalize_amount(value: str) -> str:
+    if not value:
+        return NOT_FOUND
+    cleaned = clean_value(value)
+    cleaned = cleaned.replace("I", "", 1) if cleaned.startswith("I") else cleaned
+    cleaned = cleaned.replace("₹", "")
+    return cleaned
+
+
 def extract_amount(text: str) -> str:
     labels = r"(?:grand\s+total|invoice\s+total|net\s+total|total\s+amount|amount\s+due|balance\s+due|paid\s+amount|subtotal|total)"
     pattern = re.compile(
@@ -134,8 +143,13 @@ def extract_keywords(text: str) -> List[str]:
     return [word for word, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))]
 
 
+def extract_numbers(text: str) -> List[str]:
+    matches = re.findall(r"(?<![A-Za-z])(?:₹|[$€£])?\d+(?:[,.]\d+)*(?:\.\d+)?", text)
+    return unique_matches(matches)
+
+
 def extract_structured_information(text: str) -> Dict[str, str | List[str]]:
-    """Extract fields as strings or lists and never infer missing values."""
+    """Extract common and document-specific fields without inventing values."""
     if not text or not text.strip():
         text = ""
 
@@ -143,7 +157,7 @@ def extract_structured_information(text: str) -> Dict[str, str | List[str]]:
     phones = extract_phones(text)
     dates = extract_dates(text)
 
-    return {
+    fields: Dict[str, str | List[str]] = {
         "Person Name": extract_name(text),
         "Organization": extract_organization(text),
         "Email": emails[0] if emails else NOT_FOUND,
@@ -156,4 +170,73 @@ def extract_structured_information(text: str) -> Dict[str, str | List[str]]:
         "All Phones": phones,
         "All Dates": dates,
         "Keywords": extract_keywords(text),
+    }
+
+    fields.update(extract_document_specific_fields(text))
+    return fields
+
+
+def extract_document_specific_fields(text: str) -> Dict[str, str]:
+    """Extract fields relevant to the detected document category."""
+    normalized = text.lower()
+
+    if any(marker in normalized for marker in ("application form", "application number", "applicant name", "declaration")):
+        return {
+            "Applicant Name": extract_labeled_value(text, ["Applicant Name", "Student Name", "Name"]),
+            "Organization": extract_organization(text),
+            "Email": (extract_emails(text)[0] if extract_emails(text) else NOT_FOUND),
+            "Phone": (extract_phones(text)[0] if extract_phones(text) else NOT_FOUND),
+            "Address": extract_address(text),
+            "Application Date": extract_labeled_value(text, ["Application Date", "Date"]),
+            "Application Number": extract_labeled_value(text, ["Application Number"]),
+        }
+
+    if any(marker in normalized for marker in ("certificate", "certify", "awarded", "certificate number")):
+        return {
+            "Certificate ID": extract_labeled_value(text, ["Certificate Number", "Certificate ID", "Certificate No"]),
+            "Person Name": extract_labeled_value(text, ["Student Name", "Person Name", "Name"]),
+            "Institution Name": extract_labeled_value(text, ["Institution", "Organization", "Issuer"]),
+            "Certificate Type": extract_labeled_value(text, ["Course", "Certificate Type"]),
+            "Issue Date": extract_labeled_value(text, ["Issue Date", "Date"]),
+        }
+
+    if any(marker in normalized for marker in ("receipt", "paid amount", "payment received", "change due")):
+        return {
+            "Receipt Number": extract_labeled_value(text, ["Receipt Number", "Receipt No"]),
+            "Shop Name": extract_labeled_value(text, ["Shop Name", "Organization", "Company", "Store"]),
+            "Date": extract_labeled_value(text, ["Transaction Date", "Date"]),
+            "Total Amount": normalize_amount(extract_labeled_value(text, ["Paid Amount", "Total Amount", "Amount", "Total"])),
+            "Payment Method": extract_labeled_value(text, ["Payment Method", "Payment Mode"]),
+            "Items": extract_labeled_value(text, ["Items", "Description"]),
+        }
+
+    if any(marker in normalized for marker in ("invoice", "invoice number", "bill to", "subtotal", "amount due")):
+        return {
+            "Invoice Number": extract_labeled_value(text, ["Invoice Number", "Invoice No"]),
+            "Invoice Date": extract_labeled_value(text, ["Invoice Date", "Date"]),
+            "Seller Name": extract_labeled_value(text, ["Organization", "Seller", "Vendor", "Issuer"]),
+            "Customer Name": extract_labeled_value(text, ["Customer Name", "Applicant Name", "Name"]),
+            "Email": (extract_emails(text)[0] if extract_emails(text) else NOT_FOUND),
+            "Phone": (extract_phones(text)[0] if extract_phones(text) else NOT_FOUND),
+            "Subtotal": normalize_amount(extract_labeled_value(text, ["Subtotal"])),
+            "Tax": normalize_amount(extract_labeled_value(text, ["Tax", "VAT", "GST"])),
+            "Total Amount": normalize_amount(extract_labeled_value(text, ["Total Amount", "Grand Total", "Amount Due", "Total"])),
+        }
+
+    if any(marker in normalized for marker in ("report", "findings", "conclusion", "summary", "analysis")):
+        title_match = re.search(r"(?im)^\s*(?:report title|title)\s*[:=-]?\s*([^\n]+)", text)
+        first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
+        return {
+            "Report Title": clean_value(title_match.group(1)) if title_match else clean_value(first_line),
+            "Organization": extract_organization(text),
+            "Date": extract_labeled_value(text, ["Report Date", "Date"]),
+            "Keywords": extract_keywords(text),
+            "Numerical Information": extract_numbers(text),
+        }
+
+    return {
+        "Extracted Text Summary": clean_value(text[:300]) if text else NOT_FOUND,
+        "Email": (extract_emails(text)[0] if extract_emails(text) else NOT_FOUND),
+        "Phone": (extract_phones(text)[0] if extract_phones(text) else NOT_FOUND),
+        "Date": (extract_dates(text)[0] if extract_dates(text) else NOT_FOUND),
     }

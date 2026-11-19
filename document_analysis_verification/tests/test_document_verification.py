@@ -19,8 +19,9 @@ class DocumentVerificationTests(unittest.TestCase):
             "Organization": "Sunrise Technologies",
             "Email": "billing@example.com",
             "Phone": "+91 98765 43210",
-            "Date": "19/11/2026",
             "Invoice Number": "INV-001",
+            "Invoice Date": "19/11/2026",
+            "Total Amount": "1250.50",
             "Amount/Total": "1250.50",
             "Address": "123 Main Street",
         }
@@ -48,7 +49,7 @@ class DocumentVerificationTests(unittest.TestCase):
 
     def test_warning_status_for_missing_field(self):
         fields = dict(self.fields)
-        fields["Phone"] = "Not Found"
+        fields["Invoice Number"] = "Not Found"
         result = verify_document(fields, self.analysis)
         self.assertEqual(result["overall_status"], "Warning")
 

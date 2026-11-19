@@ -52,6 +52,25 @@ Total Amount: $1,250.50
         self.assertEqual(fields["Organization"], NOT_FOUND)
         self.assertEqual(fields["Keywords"], [])
 
+    def test_application_specific_fields(self):
+        text = "APPLICATION FORM\nApplication Number: APP-001\nApplicant Name: Tejal Patil\nEmail: tejal@example.com\nPhone: 9876543210\nAddress: 12 College Road\nApplication Date: 11/11/2026"
+        fields = extract_structured_information(text)
+        self.assertEqual(fields["Applicant Name"], "Tejal Patil")
+        self.assertEqual(fields["Application Number"], "APP-001")
+
+    def test_receipt_specific_fields(self):
+        text = "PAYMENT RECEIPT\nReceipt Number: RCT-1\nShop Name: Fresh Store\nTransaction Date: 10/11/2026\nPaid Amount: 850.00\nPayment Method: UPI"
+        fields = extract_structured_information(text)
+        self.assertEqual(fields["Receipt Number"], "RCT-1")
+        self.assertEqual(fields["Shop Name"], "Fresh Store")
+        self.assertEqual(fields["Payment Method"], "UPI")
+
+    def test_certificate_specific_fields(self):
+        text = "CERTIFICATE\nCertificate Number: CERT-1\nStudent Name: Priya Nair\nInstitution: National Institute\nIssue Date: 15/11/2026\nCourse: AI"
+        fields = extract_structured_information(text)
+        self.assertEqual(fields["Certificate ID"], "CERT-1")
+        self.assertEqual(fields["Person Name"], "Priya Nair")
+
 
 if __name__ == "__main__":
     unittest.main()

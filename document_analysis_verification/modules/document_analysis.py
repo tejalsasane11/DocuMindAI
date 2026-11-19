@@ -8,41 +8,51 @@ from typing import Dict, List
 NOT_FOUND = "Not Found"
 
 DOCUMENT_TYPES = {
-    "Invoice": ["invoice", "gst", "vat", "bill to", "amount due", "invoice number"],
-    "Receipt": ["receipt", "cash received", "payment received", "change due"],
-    "Certificate": ["certificate", "certify", "awarded", "certified", "achievement"],
-    "Application Form": ["application", "applicant", "candidate", "declaration"],
-    "Report": ["report", "findings", "summary", "conclusion", "analysis"],
+    "Invoice": ["invoice", "gst", "vat", "bill to", "amount due", "seller", "invoice number", "subtotal", "tax"],
+    "Receipt": ["receipt", "payment received", "cash received", "change due", "paid amount", "payment method", "shop"],
+    "Certificate": ["certificate", "certify", "certified", "awarded", "achievement", "certificate number", "institution"],
+    "Application Form": ["application form", "application number", "applicant", "candidate", "declaration", "student application"],
+    "Report": ["project report", "completion report", "report number", "findings", "conclusion", "summary", "analysis"],
 }
 
 REQUIRED_FIELDS_BY_TYPE = {
-    "Invoice": ["Person Name", "Organization", "Email", "Phone", "Date", "Invoice Number", "Amount/Total"],
-    "Receipt": ["Person Name", "Organization", "Date", "Invoice Number", "Amount/Total"],
-    "Certificate": ["Person Name", "Organization", "Date"],
-    "Application Form": ["Person Name", "Organization", "Email", "Phone", "Address"],
-    "Report": ["Organization", "Date"],
-    "Other Document": ["Person Name", "Organization", "Date"],
+    "Invoice": ["Invoice Number", "Date", "Customer Name", "Total Amount"],
+    "Receipt": ["Receipt Number", "Shop Name", "Date", "Total Amount"],
+    "Certificate": ["Certificate ID", "Person Name", "Institution Name", "Issue Date"],
+    "Application Form": ["Applicant Name", "Email", "Phone", "Address", "Application Date"],
+    "Report": ["Report Title", "Organization", "Date"],
+    "General Document": [],
 }
 
 
 def detect_document_type(text: str) -> str:
-    """Classify a document using weighted keyword matches."""
-    normalized = text.lower()
+    """Classify a document using weighted, unique keyword matches."""
+    normalized = " " + re.sub(r"[^a-z0-9]+", " ", text.lower()) + " "
     scores = {}
 
     for document_type, keywords in DOCUMENT_TYPES.items():
-        score = sum(normalized.count(keyword) for keyword in keywords)
+        score = 0
+        for keyword in keywords:
+            clean_keyword = re.sub(r"[^a-z0-9]+", " ", keyword).strip()
+            if clean_keyword in normalized:
+                weight = 3 if " " in clean_keyword or clean_keyword.endswith("number") else 1
+                score += weight
         scores[document_type] = score
 
-    best_type = max(scores, key=scores.get)
-    if scores[best_type] == 0:
-        return "Other Document"
+    ranked = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+    best_type, best_score = ranked[0]
+    second_score = ranked[1][1] if len(ranked) > 1 else 0
+
+    if best_score == 0:
+        return "General Document"
+    if best_score < 2 or best_score == second_score:
+        return "General Document"
     return best_type
 
 
 def find_missing_fields(fields: Dict[str, object], document_type: str) -> List[str]:
     """Return required fields whose values are missing or unusable."""
-    required_fields = REQUIRED_FIELDS_BY_TYPE.get(document_type, REQUIRED_FIELDS_BY_TYPE["Other Document"])
+    required_fields = REQUIRED_FIELDS_BY_TYPE.get(document_type, REQUIRED_FIELDS_BY_TYPE["General Document"])
     missing = []
 
     for field in required_fields:

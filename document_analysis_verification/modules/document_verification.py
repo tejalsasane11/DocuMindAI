@@ -47,7 +47,7 @@ def valid_date(value: str) -> bool:
 
 def valid_amount(value: str) -> bool:
     try:
-        normalized = re.sub(r"[$€£₹, ]", "", value.strip())
+        normalized = re.sub(r"[$€£₹I, ]", "", value.strip())
         number = float(normalized)
         return number >= 0
     except (TypeError, ValueError):
@@ -55,49 +55,78 @@ def valid_amount(value: str) -> bool:
 
 
 def verify_document(fields: Dict[str, object], analysis: Dict[str, object]) -> Dict[str, object]:
-    """Run rule-based checks and summarize Valid, Warning, and Error results."""
+    """Run document-type-specific rule checks and explain each result."""
     checks: List[Dict[str, str]] = []
+    document_type = str(analysis.get("document_type", "General Document"))
 
-    required_fields = {
-        "Invoice": ["Person Name", "Organization", "Email", "Phone", "Date", "Invoice Number", "Amount/Total"],
-        "Receipt": ["Person Name", "Organization", "Date", "Invoice Number", "Amount/Total"],
-        "Certificate": ["Person Name", "Organization", "Date"],
-        "Application Form": ["Person Name", "Organization", "Email", "Phone", "Address"],
-        "Report": ["Organization", "Date"],
-        "Other Document": ["Person Name", "Organization", "Date"],
+    rules = {
+        "Invoice": [
+            ("Invoice Number", "Invoice number"),
+            ("Invoice Date", "Invoice date"),
+            ("Total Amount", "Total amount"),
+        ],
+        "Receipt": [
+            ("Receipt Number", "Receipt number"),
+            ("Date", "Transaction date"),
+            ("Total Amount", "Receipt total"),
+        ],
+        "Certificate": [
+            ("Person Name", "Certificate recipient"),
+            ("Issue Date", "Certificate issue date"),
+        ],
+        "Application Form": [
+            ("Applicant Name", "Applicant name"),
+            ("Email", "Applicant email"),
+            ("Phone", "Applicant phone"),
+            ("Address", "Applicant address"),
+        ],
+        "Report": [
+            ("Report Title", "Report title"),
+            ("Organization", "Organization"),
+            ("Date", "Report date"),
+        ],
+        "General Document": [],
     }
 
-    document_type = str(analysis.get("document_type", "Other Document"))
-    for field_name in required_fields.get(document_type, required_fields["Other Document"]):
+    for field_name, label in rules.get(document_type, []):
         value = fields.get(field_name)
         if is_missing(value):
-            add_check(checks, "Warning", f"Required field: {field_name}", "Information is missing.")
+            add_check(checks, "Warning", f"Missing {label}", f"The {label.lower()} was not found.")
         else:
-            add_check(checks, "Valid", f"Required field: {field_name}", "Information is present.")
+            add_check(checks, "Valid", f"Present {label}", f"The {label.lower()} is present: {value}")
 
     email = fields.get("Email")
-    if not is_missing(email):
+    if document_type in {"Invoice", "Application Form"} and not is_missing(email):
         if valid_email(str(email)):
             add_check(checks, "Valid", "Email format", str(email))
         else:
             add_check(checks, "Error", "Email format", f"Invalid email address: {email}")
 
     phone = fields.get("Phone")
-    if not is_missing(phone):
+    if document_type in {"Invoice", "Application Form"} and not is_missing(phone):
         if valid_phone(str(phone)):
             add_check(checks, "Valid", "Phone format", str(phone))
         else:
             add_check(checks, "Error", "Phone format", f"Phone does not have 7–15 digits: {phone}")
 
-    date = fields.get("Date")
-    if not is_missing(date):
+    date_field_names = {
+        "Invoice": "Invoice Date",
+        "Receipt": "Date",
+        "Certificate": "Issue Date",
+        "Application Form": "Application Date",
+        "Report": "Date",
+    }
+    date_field = date_field_names.get(document_type)
+    date = fields.get(date_field) if date_field else None
+    if date_field and not is_missing(date):
         if valid_date(str(date)):
             add_check(checks, "Valid", "Date format", str(date))
         else:
             add_check(checks, "Error", "Date format", f"Date could not be validated: {date}")
 
-    amount = fields.get("Amount/Total")
-    if not is_missing(amount):
+    amount_field = "Total Amount" if document_type in {"Invoice", "Receipt"} else None
+    amount = fields.get(amount_field) if amount_field else None
+    if amount_field and not is_missing(amount):
         if valid_amount(str(amount)):
             add_check(checks, "Valid", "Numerical amount", str(amount))
         else:
@@ -105,12 +134,8 @@ def verify_document(fields: Dict[str, object], analysis: Dict[str, object]) -> D
 
     for duplicate in analysis.get("duplicate_information", []):
         add_check(checks, "Warning", "Duplicate or repeated information", str(duplicate))
-
     for unusual in analysis.get("unusual_values", []):
         add_check(checks, "Error", "Unusual or inconsistent value", str(unusual))
-
-    if not str(fields.get("Invoice Number", "")).strip() or str(fields.get("Invoice Number", "")).lower() == NOT_FOUND.lower():
-        add_check(checks, "Warning", "Invoice or document identifier", "Identifier is missing.")
 
     counts = {
         "valid": sum(check["status"] == "Valid" for check in checks),
@@ -118,12 +143,12 @@ def verify_document(fields: Dict[str, object], analysis: Dict[str, object]) -> D
         "errors": sum(check["status"] == "Error" for check in checks),
     }
 
-    if counts["errors"] > 0:
+    if counts["errors"]:
         overall_status = "Error"
-    elif counts["warnings"] > 0:
+    elif counts["warnings"]:
         overall_status = "Warning"
     else:
-        overall_status = "Valid"
+        overall_status = "Valid" if document_type != "General Document" or checks else "Valid"
 
     return {
         "overall_status": overall_status,

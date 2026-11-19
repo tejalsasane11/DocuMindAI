@@ -31,14 +31,18 @@ class DocumentAnalysisTests(unittest.TestCase):
         text = "INVOICE Invoice Number: INV-001 Total Amount: 1250.50 Bill To: Rahul"
         self.assertEqual(detect_document_type(text), "Invoice")
 
-    def test_detect_other_document(self):
-        self.assertEqual(detect_document_type("General notes for a project meeting"), "Other Document")
+    def test_detect_general_document(self):
+        self.assertEqual(detect_document_type("General notes for a project meeting"), "General Document")
 
-    def test_missing_fields(self):
+    def test_missing_fields_are_type_specific(self):
         incomplete = dict(self.fields)
+        incomplete["Invoice Number"] = "Not Found"
+        incomplete["Total Amount"] = "Not Found"
         incomplete["Phone"] = "Not Found"
         missing = find_missing_fields(incomplete, "Invoice")
-        self.assertIn("Phone", missing)
+        self.assertIn("Invoice Number", missing)
+        self.assertIn("Total Amount", missing)
+        self.assertNotIn("Phone", missing)
 
     def test_duplicate_values(self):
         duplicates = find_duplicate_values(self.fields)
