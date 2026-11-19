@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+.streamlit/
+reports/*.pdf
+reports/*.csv
+reports/*.txt
+.DS_Store
