@@ -45,3 +45,19 @@ Open the local address shown by Streamlit, usually `http://localhost:8501`.
 - `sample_documents/`: Optional test documents
 - `reports/`: Generated reports
 - `assets/`: Images and visual resources
+
+## Demo documents
+
+Five text-based PDF examples are included in `sample_documents/`:
+
+- `01_complete_invoice.pdf`: Demonstrates complete invoice extraction and a normally valid result.
+- `02_receipt.pdf`: Demonstrates receipt classification and payment field extraction.
+- `03_certificate.pdf`: Demonstrates person, organization, date, and certificate extraction.
+- `04_application_form.pdf`: Demonstrates application-form contact and address extraction.
+- `05_project_report.pdf`: Demonstrates report classification and missing optional fields.
+
+Recreate or replace these examples by running:
+
+```powershell
+.\.venv\Scripts\python.exe create_demo_documents.py
+```
